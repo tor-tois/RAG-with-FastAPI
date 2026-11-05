@@ -1,0 +1,40 @@
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python virtual environment
+venv/
+env/
+ragenv/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test cache
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local vector database
+faiss_index/
+vectorstore/
+
+# Sensitive uploaded documents
+data/

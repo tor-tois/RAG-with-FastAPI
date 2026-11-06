@@ -1,5 +1,8 @@
 from dotenv import load_dotenv
 import os
+import uuid
+import shutil
+from fastapi import UploadFile, File, HTTPException
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
@@ -16,11 +19,39 @@ llm = ChatGoogleGenerativeAI(api_key=GEMINI_API_KEY,
     temperature=0.2
     )
 
+upload_folder = "data"
+upload_vector = "vectorstore"
+retriever = None
+
+os.makedirs(upload_folder, exist_ok=True)
+os.makedirs(upload_vector, exist_ok=True)
+
 # Function to load and process the PDF document
-def setup_rag():
+async def setup_rag(file: UploadFile = File(...)):
+
+    # Check filename extension
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Invalid file type. Only PDF files are allowed.")
+    
+    content = await file.read()
+    
+    document_id = str(uuid.uuid4())
+
+    file_path = os.path.join(upload_folder, f"{document_id}.pdf")
+
+    # Save the uploaded file 
+    with open(file_path, "wb") as buffer:
+        buffer.write(content)
+    
+
+    document_id = str(uuid.uuid4())
+
     # Load the PDF document
-    pdfloader = PyMuPDFLoader("data/SAM.pdf")
+    pdfloader = PyMuPDFLoader(file_path)
     documents = pdfloader.load()
+
+    if not documents or not any(doc.page_content.strip() for doc in documents):
+        raise HTTPException(status_code=400, detail="The uploaded PDF is empty or contains no readable text.")
 
     # Split documents into chunks
     spilitter = RecursiveCharacterTextSplitter(
@@ -34,17 +65,29 @@ def setup_rag():
     embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 
     # Create the vector store from the document chunks and embeddings
-    db = FAISS.from_documents(documents=document_chunks, embedding=embeddings)
+    db = FAISS.from_documents(
+        documents=document_chunks, 
+        embedding=embeddings
+        )
+    
+    vectorstore_path = os.path.join(upload_vector, document_id)
 
-    # Create a retriever from the vector 
+    db.save_local(vectorstore_path)
+
+    global retriever
     retriever = db.as_retriever(
-    search_type="similarity",
-    search_kwargs={"k": 5}
+        search_type="similarity",
+        search_kwargs={"k": 5}
     )
-    return retriever
+
+    return document_id, file.filename, len(documents), len(document_chunks)
 
 async def rag_response(query: str):
-    retriever = setup_rag()
+    if retriever is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Upload a PDF before submitting a query."
+        )
     
     # Retrieve the relevant documents
     retriever_docs = await retriever.ainvoke(query)
@@ -75,4 +118,3 @@ async def rag_response(query: str):
     # Generate a response using the LLM
     response = await llm.ainvoke(prompt)
     return response.content
-

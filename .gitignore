@@ -36,5 +36,4 @@ Thumbs.db
 faiss_index/
 vectorstore/
 
-# Sensitive uploaded documents
-data/
+
